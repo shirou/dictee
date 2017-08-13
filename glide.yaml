@@ -1,0 +1,9 @@
+package: github.com/shirou/dictee
+import:
+- package: github.com/therecipe/qt
+  subpackages:
+  - core
+  - gui
+  - qml
+  - quickcontrols2
+- package: github.com/syndtr/goleveldb
