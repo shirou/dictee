@@ -1,14 +1,39 @@
-hash: 308650f1e22c77328a37063768af5f108fb4c75033ab7bfb79b91c9f65eda35b
-updated: 2017-08-11T23:41:46.07743914+09:00
+hash: 08e31318a62ff49587aec794e8ac139cbbbfa29da5602480c06100915fe26c08
+updated: 2017-08-23T17:40:54.73902198+09:00
 imports:
+- name: github.com/apex/log
+  version: 0296d6eb16bb28f8a0c55668affcf4876dc269be
+- name: github.com/golang/snappy
+  version: d9eb7a3d35ec988b8585d4a0068e462c27d28380
+- name: github.com/pkg/errors
+  version: 248dadf4e9068a0b3e79f02ed0a610d935de5302
 - name: github.com/syndtr/goleveldb
   version: ab8b5dcf1042e818ab68e770d465112a899b668e
-- name: github.com/therecipe/qt
-  version: aff8abf36559a7585efbbc334940a49165440bc3
   subpackages:
-  - core
-  - gui
-  - network
-  - qml
-  - quickcontrols2
-testImports: []
+  - leveldb
+  - leveldb/cache
+  - leveldb/comparer
+  - leveldb/errors
+  - leveldb/filter
+  - leveldb/iterator
+  - leveldb/journal
+  - leveldb/memdb
+  - leveldb/opt
+  - leveldb/storage
+  - leveldb/table
+  - leveldb/util
+- name: github.com/urfave/cli
+  version: 0bdeddeeb0f650497d603c4ad7b20cfe685682f6
+testImports:
+- name: github.com/davecgh/go-spew
+  version: 04cdfd42973bb9c8589fd6a731800cf222fde1a9
+  subpackages:
+  - spew
+- name: github.com/pmezard/go-difflib
+  version: d8ed2627bdf02c080bf22230dbb337003b7aba2d
+  subpackages:
+  - difflib
+- name: github.com/stretchr/testify
+  version: 2402e8e7a02fc811447d11f881aa9746cdc57983
+  subpackages:
+  - assert

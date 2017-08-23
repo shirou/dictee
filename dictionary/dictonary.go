@@ -14,6 +14,8 @@ const (
 	DictTypeEDICT             = "EDICT"
 )
 
+const IndexSuffix = "_index.db"
+
 type Dictionary interface {
 	Search(word string) ([]Title, error)
 	Get(Title) (Entry, error)
@@ -58,26 +60,4 @@ func decodeOffsetSize(b []byte) (int64, int, error) {
 	}
 
 	return offset, int(size), nil
-}
-
-type ConfigDictionary struct {
-	Name        string   `json:"name"`
-	DictType    DictType `json:"dict_type"`
-	DisplayName string   `json:"display_name"`
-	BodyPath    string   `json:"body_path"`
-	IndexPath   string   `json:"index_path"`
-}
-
-func (c ConfigDictionary) NewDictionary() (dic Dictionary, err error) {
-	switch c.DictType {
-	case DictTypeApple:
-		dic, err = NewAppleDictionary(c.Name, c.DictPath)
-	default:
-		return nil, errors.Errorf("unknown dict type: %s", c.DictType)
-	}
-
-	if err != nil {
-		return nil, errors.Wrapf(err, "New Dictonary failed: %s", c.DisplayName)
-	}
-
 }

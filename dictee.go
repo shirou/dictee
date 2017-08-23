@@ -2,8 +2,8 @@ package dictee
 
 import (
 	"fmt"
+	"log"
 
-	"github.com/Masterminds/cookoo/log"
 	"github.com/shirou/dictee/dictionary"
 )
 
@@ -41,7 +41,7 @@ func (d *Dictee) Search(word string) {
 
 func (d *Dictee) MakeIndex() {
 	for _, dict := range d.Dictionaries {
-		log.Infof("create index start: %s", dict.DisplayName)
+		log.Printf("create index start: %v", dict)
 		dict.MakeIndex(d.ConfigRoot)
 	}
 }

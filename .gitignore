@@ -1,3 +1,6 @@
 cmd/dictee/dictee
 vendor
 tests
+ui/deploy
+ui/darwin
+ui/ui

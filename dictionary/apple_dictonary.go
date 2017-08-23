@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/apex/log"
 	"github.com/pkg/errors"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/util"
@@ -36,35 +37,38 @@ func (e *AppleEntry) ToText() string {
 	return ""
 }
 
-func NewAppleDictionary(name, dir string) (*AppleDictionary, error) {
+func NewAppleDictionary(name, dir, confRoot string) (*AppleDictionary, error) {
 	body := filepath.Join(dir, "Body.data")
+	index := filepath.Join(confRoot, name+IndexSuffix)
 
 	return &AppleDictionary{
-		Name:     name,
-		BodyPath: body,
+		Name:      name,
+		BodyPath:  body,
+		IndexPath: index,
 	}, nil
 }
 
 func (dict *AppleDictionary) MakeIndex(root string) error {
-	db, err := leveldb.OpenFile(dbpath, nil)
+	log.Debugf("make index: %s, body: %s", dict.IndexPath, dict.BodyPath)
+	db, err := leveldb.OpenFile(dict.IndexPath, nil)
 	defer db.Close()
 
 	f, err := os.Open(dict.BodyPath)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "body Open failed: %s", dict.BodyPath)
 	}
 	defer f.Close()
 
 	lbuf := make([]byte, 4)
 	_, err = f.ReadAt(lbuf, 0x40)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "first read at failed")
 	}
 	limit := int64(0x40 + binary.LittleEndian.Uint32(lbuf))
 
 	_, err = f.Seek(0x60, 0)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "seek to 0x60 failed")
 	}
 
 	re := regexp.MustCompile(`<d:entry(.+)</d.entry>`)
@@ -78,17 +82,17 @@ func (dict *AppleDictionary) MakeIndex(root string) error {
 		}
 		_, err = f.Read(buf)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "read header")
 		}
 		size := binary.LittleEndian.Uint32(buf)
 		body := make([]byte, size)
 		_, err = f.Read(body)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "read body")
 		}
 		r, err := decompress(body[8:])
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "decompress")
 		}
 		for _, x := range re.FindAll(r, -1) {
 			var r AppleXMLEntry
@@ -105,6 +109,7 @@ func (dict *AppleDictionary) MakeIndex(root string) error {
 			fmt.Print(".")
 		}
 	}
+	log.Infof("create index done")
 
 	return nil
 }
@@ -154,7 +159,7 @@ func (dict *AppleDictionary) Get(title Title) (Entry, error) {
 
 	_, err = f.Seek(0x60, 0)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "seek")
 	}
 
 	buf := make([]byte, title.Size)

@@ -1,9 +1,9 @@
 package: github.com/shirou/dictee
+license: MIT
+ignore:
+- github.com/therecipe/qt
+excludeDirs:
+- ui
 import:
-- package: github.com/therecipe/qt
-  subpackages:
-  - core
-  - gui
-  - qml
-  - quickcontrols2
 - package: github.com/syndtr/goleveldb
+- package: github.com/apex/log
