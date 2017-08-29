@@ -1,36 +1,61 @@
 package dictionary
 
 import (
+	"context"
+	"encoding/xml"
 	"fmt"
+	"io/ioutil"
+	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func TestAppleDictionaryMakeIndex(t *testing.T) {
-	dict := NewAppleDictionary("test", "/System/Library/Assets/com_apple_MobileAsset_DictionaryServices_dictionaryOSX/1a184f41ee27bbb203ba596a25c8ea104c13d98f.asset/AssetData/Sanseido The WISDOM English-Japanese Japanese-English Dictionary.dictionary/Contents/Resources/")
+func TestAppleSearch(t *testing.T) {
+	assert := assert.New(t)
+	confRoot := "/tmp/"
+	path := filepath.Join("testcase", "apple", "jp-eg.dictionary", "Contents")
+	dict := NewAppleDictionary("test", path, confRoot)
+	dict.IndexPath = "/tmp/test_index.db"
 
-	if err := dict.MakeIndex(); err != nil {
+	if err := dict.MakeIndex(confRoot); err != nil {
 		t.Fatal(err)
 	}
+	t.Run("search", func(t *testing.T) {
+		ctx := context.Background()
+		titles, err := dict.Search(ctx, "gol") // golang is not included
+		assert.Nil(err)
+		assert.Len(titles, 47)
+		assert.Equal(int64(426308), titles[0].Offset)
+		assert.Equal("gold", titles[0].Title)
+	})
+
+	t.Run("get", func(t *testing.T) {
+		title := Title{
+			Title:  "gold",
+			Offset: 426308,
+			Size:   32780,
+		}
+		entry, err := dict.Get(title)
+		assert.Nil(err)
+		assert.Equal(`<h1>gold</h1>
+<p>
+go-rudo, kin, kogane<br/>
+</p>`, entry.ToText())
+	})
 }
 
-func TestAppleDictionarySearch(t *testing.T) {
-	a := &AppleDictionary{
-		IndexPath: "/tmp/hoge.db",
-	}
+func TestAppleEntry(t *testing.T) {
+	assert := assert.New(t)
+	path := filepath.Join("testcase", "apple", "entry_test.xml")
+	b, err := ioutil.ReadFile(path)
+	assert.Nil(err)
 
-	fmt.Println(a.Search("a"))
-}
-
-func TestAppleDictionaryGet(t *testing.T) {
-	dict := NewAppleDictionary("test", "/System/Library/Assets/com_apple_MobileAsset_DictionaryServices_dictionaryOSX/1a184f41ee27bbb203ba596a25c8ea104c13d98f.asset/AssetData/Sanseido The WISDOM English-Japanese Japanese-English Dictionary.dictionary/Contents/Resources/")
-
-	title := Title{
-		Offset: 784027,
-		Size:   32790,
-	}
-	//	332127,32811
-	// 96,33017
-
-	entry, err := dict.Get(title)
-	fmt.Println(entry, err)
+	var r AppleXMLEntry
+	assert.Nil(xml.Unmarshal(b, &r))
+	assert.Equal("gold", r.AttrTitle)
+	ap := &AppleEntry{}
+	ap.Body = r
+	ap.Original = string(b)
+	fmt.Println(ap.ToRich())
 }

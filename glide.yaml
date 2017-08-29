@@ -7,3 +7,6 @@ excludeDirs:
 import:
 - package: github.com/syndtr/goleveldb
 - package: github.com/apex/log
+- package: golang.org/x/sync
+  subpackages:
+  - errgroup

@@ -3,6 +3,7 @@ package dictionary
 import (
 	"bytes"
 	"compress/zlib"
+	"context"
 	"encoding/binary"
 	"encoding/xml"
 	"fmt"
@@ -18,6 +19,8 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
+var appleEntryRe = regexp.MustCompile("<d:entry (?Us:.+)</d:entry>")
+
 type AppleDictionary struct {
 	Name        string `json:"name"`
 	DictType    string `json:"dict_type"`
@@ -27,17 +30,56 @@ type AppleDictionary struct {
 }
 
 type AppleEntry struct {
-	Title  string
-	Body   AppleXMLEntry
-	Offset int64
-	Size   int
+	Title    string
+	Body     AppleXMLEntry
+	Offset   int64
+	Size     int
+	Original string
 }
 
 func (e *AppleEntry) ToText() string {
-	return ""
+	if len(e.Body.AppleXMLSpan) == 0 {
+		// if len is 0, assume it is just a HTML
+		return e.truncateEntryTag(e.Original)
+	}
+
+	var buf bytes.Buffer
+	for _, span := range e.Body.AppleXMLSpan {
+		buf.WriteString(span.Text)
+	}
+
+	return buf.String()
 }
 
-func NewAppleDictionary(name, dir, confRoot string) (*AppleDictionary, error) {
+func (e *AppleEntry) ToRich() string {
+	if len(e.Body.AppleXMLSpan) == 0 {
+		// if len is 0, assume it is just a HTML
+		return e.truncateEntryTag(e.Original)
+	}
+	var buf bytes.Buffer
+	for _, span := range e.Body.AppleXMLSpan {
+		e.Dump(buf, span, true)
+	}
+	return buf.String()
+}
+
+func (e *AppleEntry) Dump(buf bytes.Buffer, span *AppleXMLSpan, rich bool) {
+	for _, sp := range span.AppleXMLSpan {
+		e.Dump(buf, sp, rich)
+	}
+	b, err := xml.MarshalIndent(span, "", " ")
+	if err != nil {
+		return
+	}
+	buf.Write(b)
+}
+
+func (e *AppleEntry) truncateEntryTag(original string) string {
+	f := strings.Index(original, ">")
+	return strings.TrimSpace(strings.Replace(original[f+1:], "</d:entry>", "", 1))
+}
+
+func NewAppleDictionary(name, dir, confRoot string) *AppleDictionary {
 	body := filepath.Join(dir, "Body.data")
 	index := filepath.Join(confRoot, name+IndexSuffix)
 
@@ -45,13 +87,21 @@ func NewAppleDictionary(name, dir, confRoot string) (*AppleDictionary, error) {
 		Name:      name,
 		BodyPath:  body,
 		IndexPath: index,
-	}, nil
+	}
 }
+
+func (dict *AppleDictionary) GetName() string { return dict.Name }
 
 func (dict *AppleDictionary) MakeIndex(root string) error {
 	log.Debugf("make index: %s, body: %s", dict.IndexPath, dict.BodyPath)
 	db, err := leveldb.OpenFile(dict.IndexPath, nil)
 	defer db.Close()
+
+	fstat, err := os.Stat(dict.BodyPath)
+	if err != nil {
+		return errors.Wrapf(err, "body stat failed: %s", dict.BodyPath)
+	}
+	max := int(fstat.Size())
 
 	f, err := os.Open(dict.BodyPath)
 	if err != nil {
@@ -71,10 +121,7 @@ func (dict *AppleDictionary) MakeIndex(root string) error {
 		return errors.Wrapf(err, "seek to 0x60 failed")
 	}
 
-	re := regexp.MustCompile(`<d:entry(.+)</d.entry>`)
-
 	buf := make([]byte, 4)
-	var count int
 	for {
 		offset, err := f.Seek(0, 1)
 		if offset >= limit {
@@ -94,32 +141,27 @@ func (dict *AppleDictionary) MakeIndex(root string) error {
 		if err != nil {
 			return errors.Wrapf(err, "decompress")
 		}
-		for _, x := range re.FindAll(r, -1) {
+		for _, x := range appleEntryRe.FindAll(r, -1) {
 			var r AppleXMLEntry
 			if err := xml.Unmarshal(x, &r); err != nil {
 				return errors.Wrapf(err, "xml unmarshal failed")
 			}
-
-			//			fmt.Printf("%s; %d,%d\n", r.AttrTitle, offset, size)
 			v := encodeOffsetSize(offset, int(size))
 			db.Put([]byte(strings.ToLower(r.AttrTitle)), v, nil)
 		}
-		count++
-		if count%100 == 0 {
-			fmt.Print(".")
-		}
+		IndexCallback(int(offset), max)
 	}
 	log.Infof("create index done")
 
 	return nil
 }
 
-func (dict *AppleDictionary) Search(word string) ([]Title, error) {
+func (dict *AppleDictionary) Search(ctx context.Context, word string) ([]Title, error) {
 	db, err := leveldb.OpenFile(dict.IndexPath, nil)
-	defer db.Close()
 	if err != nil {
 		return nil, errors.Wrapf(err, "open failed:%s", dict.IndexPath)
 	}
+	defer db.Close()
 
 	var ret []Title
 	iter := db.NewIterator(util.BytesPrefix([]byte(word)), nil)
@@ -127,7 +169,6 @@ func (dict *AppleDictionary) Search(word string) ([]Title, error) {
 		key := iter.Key()
 		value := iter.Value()
 
-		fmt.Println(value)
 		o, sz, err := decodeOffsetSize(value)
 		if err != nil {
 			return nil, errors.Wrap(err, "apple dict search")
@@ -139,8 +180,6 @@ func (dict *AppleDictionary) Search(word string) ([]Title, error) {
 			Size:       sz,
 			Dictionary: dict,
 		})
-
-		fmt.Println(string(key), string(value))
 	}
 	iter.Release()
 	if err := iter.Error(); err != nil {
@@ -171,9 +210,25 @@ func (dict *AppleDictionary) Get(title Title) (Entry, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "get decompress failed: %v", title)
 	}
-	fmt.Println(string(r))
 
-	return &AppleEntry{}, nil
+	for _, x := range appleEntryRe.FindAll(r, -1) {
+		var r AppleXMLEntry
+		if err := xml.Unmarshal(x, &r); err != nil {
+			return nil, errors.Wrapf(err, "xml unmarshal failed")
+		}
+		if strings.ToLower(r.AttrTitle) == title.Title {
+			ret := &AppleEntry{
+				Title:    r.AttrTitle,
+				Body:     r,
+				Offset:   title.Offset,
+				Size:     title.Size,
+				Original: string(x),
+			}
+			return ret, nil
+		}
+	}
+
+	return nil, fmt.Errorf("title not found")
 }
 
 func decompress(data []byte) ([]byte, error) {
@@ -207,4 +262,25 @@ type AppleXMLSpan struct {
 	AttrRole     string          `xml:"role,attr"  json:",omitempty"`
 	AppleXMLSpan []*AppleXMLSpan `xml:"span,omitempty" json:"span,omitempty"`
 	Text         string          `xml:",chardata" json:",omitempty"`
+}
+
+func (span *AppleXMLSpan) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	switch span.AttrClass {
+	case "gramb":
+		start.Name = xml.Name{Space: "sp", Local: "h1"}
+	default:
+		start.Name = xml.Name{Space: "sp", Local: "vvv"}
+	}
+
+	if err := e.EncodeToken(start); err != nil {
+		return err
+	}
+	e.EncodeToken(span.Text)
+	for _, s := range span.AppleXMLSpan {
+		if err := e.Encode(s); err != nil {
+			return err
+		}
+	}
+
+	return e.EncodeToken(start.End)
 }

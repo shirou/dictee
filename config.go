@@ -29,7 +29,7 @@ type ConfigDictionary struct {
 func (c ConfigDictionary) NewDictionary(confRoot string) (dic dictionary.Dictionary, err error) {
 	switch c.DictType {
 	case dictionary.DictTypeApple:
-		dic, err = dictionary.NewAppleDictionary(c.Name, c.DictPath, confRoot)
+		dic = dictionary.NewAppleDictionary(c.Name, c.DictPath, confRoot)
 	default:
 		return nil, errors.Errorf("unknown dict type: %s", c.DictType)
 	}
@@ -61,9 +61,11 @@ func ReadConfig(path string) (*Config, Dictee, error) {
 			return nil, Dictee{}, errors.Wrap(err, "ReadConfig unmarshal")
 		}
 	} else {
-		config.Path = path
 		config.Dictionaries = make([]ConfigDictionary, 0)
 	}
+
+	config.Path = path
+	config.Root = filepath.Dir(path)
 
 	ret := Dictee{
 		ConfigRoot:   filepath.Dir(path),
@@ -71,14 +73,12 @@ func ReadConfig(path string) (*Config, Dictee, error) {
 	}
 
 	for i, conf := range config.Dictionaries {
-		t, err := conf.NewDictionary(path)
+		t, err := conf.NewDictionary(config.Root)
 		if err != nil {
 			return nil, ret, errors.Wrap(err, "new dictionary")
 		}
 		ret.Dictionaries[i] = t
 	}
-	config.Path = path
-	config.Root = filepath.Dir(path)
 
 	return &config, ret, nil
 }
@@ -100,10 +100,7 @@ func (c *Config) AddDictionary(name, dictType, dictPath string) (err error) {
 	var dict dictionary.Dictionary
 	switch dictionary.DictType(dictType) {
 	case dictionary.DictTypeApple:
-		dict, err = dictionary.NewAppleDictionary(name, dictPath, c.Root)
-		if err != nil {
-			return errors.Wrap(err, "AddDictionary")
-		}
+		dict = dictionary.NewAppleDictionary(name, dictPath, c.Root)
 	default:
 		return fmt.Errorf("unknown dict type: %s", dictType)
 	}
@@ -120,7 +117,6 @@ func (c *Config) AddDictionary(name, dictType, dictPath string) (err error) {
 	}
 
 	c.Dictionaries = append(c.Dictionaries, confDict)
-	fmt.Println(c.Dictionaries)
 
 	return nil
 }

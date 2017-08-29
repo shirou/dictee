@@ -1,6 +1,7 @@
 package dictionary
 
 import (
+	"context"
 	"encoding/binary"
 
 	"github.com/pkg/errors"
@@ -17,9 +18,10 @@ const (
 const IndexSuffix = "_index.db"
 
 type Dictionary interface {
-	Search(word string) ([]Title, error)
+	Search(ctx context.Context, word string) ([]Title, error)
 	Get(Title) (Entry, error)
 	MakeIndex(string) error
+	GetName() string
 	//	IsIndexCreated() bool
 }
 
@@ -32,6 +34,7 @@ type Title struct {
 
 type Entry interface {
 	ToText() string // return text to show in terminal
+	ToRich() string // return Rich to show in QT
 }
 
 // makeDictName returns filessytem friendly name from name.
@@ -42,19 +45,16 @@ func makeDictName(name string) string {
 }
 
 func encodeOffsetSize(offset int64, size int) []byte {
-	o := make([]byte, 4)
+	o := make([]byte, 8)
 	binary.PutVarint(o, offset)
-	s := make([]byte, 4)
+	s := make([]byte, 8)
 	binary.PutVarint(s, int64(size))
 	return append(o, s...)
 }
 
 func decodeOffsetSize(b []byte) (int64, int, error) {
-	offset, n := binary.Varint(b[:3])
-	if n < 1 {
-		return 0, 0, errors.Errorf("offset decode failed, %d", n)
-	}
-	size, n := binary.Varint(b[4:])
+	offset, _ := binary.Varint(b[:7])
+	size, n := binary.Varint(b[8:])
 	if n < 1 {
 		return 0, 0, errors.Errorf("size decode failed, %d", n)
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/urfave/cli"
 
 	"github.com/shirou/dictee"
+	"github.com/shirou/dictee/dictionary"
 )
 
 const version string = "0.0.1"
@@ -129,7 +131,34 @@ func doSearch(c *cli.Context) error {
 		return err
 	}
 	word := c.Args().First()
-	d.Search(word)
+	if word == "" {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	ch := make(chan dictionary.Title, 100)
+	go d.SearchAll(ctx, word, ch)
+
+	for {
+		select {
+		case title, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			log.Infof("%s", title.Title)
+			g, err := title.Dictionary.Get(title)
+			if err != nil {
+				return errors.Wrap(err, "dict get error")
+			}
+			fmt.Println(g.ToRich())
+		case <-ctx.Done():
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+		}
+	}
 
 	return nil
 }

@@ -8,7 +8,7 @@ import (
 
 func TestEncodeOffsetSize(t *testing.T) {
 	o := int64(10)
-	s := 99999999
+	s := 9999999999
 
 	b := encodeOffsetSize(o, s)
 	do, ds, err := decodeOffsetSize(b)
